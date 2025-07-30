@@ -25,6 +25,10 @@ export interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  requiresNewPassword?: boolean;
+  userAttributes?: any;
+  requiredAttributes?: any;
+  cognitoUser?: any;
 }
 
 // Login credentials
@@ -39,6 +43,10 @@ export interface AuthResponse {
   user?: User;
   tokens?: AuthTokens;
   error?: string;
+  requiresNewPassword?: boolean;
+  userAttributes?: any;
+  requiredAttributes?: any;
+  cognitoUser?: any;
 }
 
 // Cognito error types
@@ -52,6 +60,8 @@ export interface CognitoError {
 export interface FormErrors {
   username?: string;
   password?: string;
+  newPassword?: string;
+  confirmPassword?: string;
   general?: string;
 }
 

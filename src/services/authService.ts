@@ -23,13 +23,21 @@ import {
 } from "../utils/tokenStorage";
 
 // Initialize Cognito User Pool
+let userPool: CognitoUserPool | null = null;
 
-const config = getCognitoConfig();
-
-const userPool = new CognitoUserPool({
-  UserPoolId: config.userPoolId,
-  ClientId: config.clientId,
-});
+try {
+  const config = getCognitoConfig();
+  userPool = new CognitoUserPool({
+    UserPoolId: config.userPoolId,
+    ClientId: config.clientId,
+  });
+} catch (error) {
+  console.warn(
+    "Cognito not initialized - will show login form but authentication will fail:",
+    error
+  );
+  // userPool will remain null, but the app will still show the login form
+}
 
 // Convert Cognito session to our AuthTokens format
 const sessionToTokens = (session: CognitoUserSession): AuthTokens => {
@@ -41,15 +49,47 @@ const sessionToTokens = (session: CognitoUserSession): AuthTokens => {
   };
 };
 
+// Get user attributes from ID token
+const getUserAttributesFromToken = (session: CognitoUserSession): any => {
+  try {
+    const idToken = session.getIdToken();
+    const payload = idToken.decodePayload();
+    return payload;
+  } catch (error) {
+    console.warn("Failed to decode ID token payload:", error);
+    return {};
+  }
+};
+
 // Convert Cognito user to our User format
-const cognitoUserToUser = (cognitoUser: CognitoUser): User => {
+const cognitoUserToUser = (
+  cognitoUser: CognitoUser,
+  session?: CognitoUserSession
+): User => {
+  const username = cognitoUser.getUsername();
+  let email = username;
+  let attributes: any = {
+    email: username,
+    sub: username,
+  };
+
+  // If we have a session, try to get attributes from the ID token
+  if (session) {
+    try {
+      const tokenAttributes = getUserAttributesFromToken(session);
+      if (tokenAttributes.email) {
+        email = tokenAttributes.email;
+        attributes = { ...attributes, ...tokenAttributes };
+      }
+    } catch (error) {
+      console.warn("Failed to get attributes from session:", error);
+    }
+  }
+
   return {
-    username: cognitoUser.getUsername(),
-    email: cognitoUser.getUsername(), // Assuming username is email
-    attributes: {
-      email: cognitoUser.getUsername(),
-      sub: cognitoUser.getUsername(),
-    },
+    username: username,
+    email: email,
+    attributes: attributes,
   };
 };
 
@@ -58,6 +98,18 @@ export const login = async (
   credentials: LoginCredentials
 ): Promise<AuthResponse> => {
   return new Promise((resolve, reject) => {
+    console.log("Attempting login with username:", credentials.username);
+    console.log("UserPool configured:", !!userPool);
+
+    if (!userPool) {
+      reject({
+        success: false,
+        error:
+          "Authentication service not configured. Please check your AWS Cognito credentials.",
+      });
+      return;
+    }
+
     const authenticationDetails = new AuthenticationDetails({
       Username: credentials.username,
       Password: credentials.password,
@@ -71,7 +123,7 @@ export const login = async (
     cognitoUser.authenticateUser(authenticationDetails, {
       onSuccess: (session: CognitoUserSession) => {
         const tokens = sessionToTokens(session);
-        const user = cognitoUserToUser(cognitoUser);
+        const user = cognitoUserToUser(cognitoUser, session);
 
         // Store tokens
         storeTokens(tokens);
@@ -83,9 +135,20 @@ export const login = async (
         });
       },
       onFailure: (error: CognitoError) => {
+        console.error("Cognito authentication error:", error);
         reject({
           success: false,
           error: error.message,
+        });
+      },
+      newPasswordRequired: (userAttributes: any, requiredAttributes: any) => {
+        console.log("New password required for user:", userAttributes);
+        resolve({
+          success: false,
+          requiresNewPassword: true,
+          userAttributes,
+          requiredAttributes,
+          cognitoUser,
         });
       },
     });
@@ -94,15 +157,19 @@ export const login = async (
 
 // Logout function
 export const logout = (): void => {
-  const currentUser = userPool.getCurrentUser();
-  if (currentUser) {
-    currentUser.signOut();
+  if (userPool) {
+    const currentUser = userPool.getCurrentUser();
+    if (currentUser) {
+      currentUser.signOut();
+    }
   }
   clearTokens();
 };
 
 // Get current user
 export const getCurrentUser = (): User | null => {
+  if (!userPool) return null;
+
   const currentUser = userPool.getCurrentUser();
   if (!currentUser) return null;
 
@@ -120,6 +187,14 @@ export const isAuthenticated = (): boolean => {
 // Refresh tokens
 export const refreshTokens = async (): Promise<AuthResponse> => {
   return new Promise((resolve, reject) => {
+    if (!userPool) {
+      reject({
+        success: false,
+        error: "Authentication service not configured",
+      });
+      return;
+    }
+
     const currentUser = userPool.getCurrentUser();
     if (!currentUser) {
       reject({
@@ -165,6 +240,66 @@ export const refreshTokens = async (): Promise<AuthResponse> => {
           error: "Failed to refresh session",
         });
       }
+    });
+  });
+};
+
+// Set new password
+export const setNewPassword = async (
+  cognitoUser: any,
+  newPassword: string,
+  userAttributes?: any
+): Promise<AuthResponse> => {
+  return new Promise((resolve, reject) => {
+    // Prepare attributes for the challenge
+    const attributes = userAttributes || {};
+
+    console.log("User attributes received:", userAttributes);
+
+    // Filter out non-mutable attributes that cannot be modified
+    const mutableAttributes: any = {};
+    Object.keys(attributes).forEach((key) => {
+      // Skip read-only attributes and already provided attributes
+      if (
+        key !== "email_verified" &&
+        key !== "sub" &&
+        key !== "cognito:username" &&
+        key !== "email" // Email is already provided and cannot be modified
+      ) {
+        mutableAttributes[key] = attributes[key];
+      }
+    });
+
+    // Ensure required attributes are present
+    if (!mutableAttributes.name && attributes.email) {
+      // Use email prefix as name if name is missing (use original attributes for email)
+      mutableAttributes.name = attributes.email.split("@")[0];
+      console.log("Generated name from email:", mutableAttributes.name);
+    }
+
+    console.log("Mutable attributes being sent to Cognito:", mutableAttributes);
+
+    cognitoUser.completeNewPasswordChallenge(newPassword, mutableAttributes, {
+      onSuccess: (session: CognitoUserSession) => {
+        const tokens = sessionToTokens(session);
+        const user = cognitoUserToUser(cognitoUser, session);
+
+        // Store tokens
+        storeTokens(tokens);
+
+        resolve({
+          success: true,
+          user,
+          tokens,
+        });
+      },
+      onFailure: (error: CognitoError) => {
+        console.error("Set new password error:", error);
+        reject({
+          success: false,
+          error: error.message,
+        });
+      },
     });
   });
 };

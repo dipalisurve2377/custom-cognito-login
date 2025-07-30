@@ -1,35 +1,80 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { AuthProvider } from "./contexts/AuthContext";
+import LoginForm from "./components/auth/LoginForm";
+import NewPasswordForm from "./components/auth/NewPasswordForm";
+import { useAuth } from "./contexts/AuthContext";
+import "./App.css";
 
+// Main app content component
+const AppContent: React.FC = () => {
+  const {
+    isAuthenticated,
+    isLoading,
+    user,
+    logout,
+    requiresNewPassword,
+    userAttributes,
+    cognitoUser,
+    setNewPassword,
+  } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  if (requiresNewPassword && cognitoUser && userAttributes) {
+    return (
+      <NewPasswordForm
+        cognitoUser={cognitoUser}
+        userAttributes={userAttributes}
+        onSuccess={() => {
+          // This will be handled by the context
+        }}
+        onCancel={() => {
+          // Reset the state to show login form
+          logout();
+        }}
+      />
+    );
+  }
+
+  if (isAuthenticated && user) {
+    // Extract a friendly username from email or use the username
+    const friendlyUsername =
+      user.email && user.email.includes("@")
+        ? user.email.split("@")[0]
+        : user.username;
+
+    return (
+      <div className="dashboard-container">
+        <div className="dashboard-header">
+          <h1>Welcome, {friendlyUsername}!</h1>
+          <button onClick={logout} className="logout-button">
+            Logout
+          </button>
+        </div>
+        <div className="dashboard-content">
+          <p>You are successfully authenticated with AWS Cognito.</p>
+          <p>Email: {user.email}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <LoginForm />;
+};
+
+// Main App component with AuthProvider
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
 }
 
-export default App
+export default App;
