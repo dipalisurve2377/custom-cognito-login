@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "4000:80"
+    environment:
+      - NODE_ENV=production
+      - VITE_COGNITO_USER_POOL_ID=ap-south-1_SpKw78avg
+      - VITE_COGNITO_CLIENT_ID=4gag1nc1hgbq1q0mkodvitqlln
+      - VITE_COGNITO_REGION=ap-south-1
+    restart: unless-stopped

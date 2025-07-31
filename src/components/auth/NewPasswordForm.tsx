@@ -4,15 +4,13 @@ import type { FormErrors } from "../../types/auth";
 import "./NewPasswordForm.css";
 
 interface NewPasswordFormProps {
-  cognitoUser: any;
-  userAttributes: any;
+  cognitoUser?: any;
+  userAttributes?: any;
   onSuccess: () => void;
   onCancel: () => void;
 }
 
 const NewPasswordForm: React.FC<NewPasswordFormProps> = ({
-  cognitoUser,
-  userAttributes,
   onSuccess,
   onCancel,
 }) => {

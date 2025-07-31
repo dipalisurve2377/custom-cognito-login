@@ -14,7 +14,6 @@ const AppContent: React.FC = () => {
     requiresNewPassword,
     userAttributes,
     cognitoUser,
-    setNewPassword,
   } = useAuth();
 
   if (isLoading) {
