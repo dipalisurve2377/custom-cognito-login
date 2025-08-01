@@ -1,6 +1,7 @@
 import { AuthProvider } from "./contexts/AuthContext";
 import LoginForm from "./components/auth/LoginForm";
 import NewPasswordForm from "./components/auth/NewPasswordForm";
+// import TokenDemo from "./components/demo/TokenDemo";
 import { useAuth } from "./contexts/AuthContext";
 import "./App.css";
 
@@ -59,6 +60,9 @@ const AppContent: React.FC = () => {
         <div className="dashboard-content">
           <p>You are successfully authenticated with AWS Cognito.</p>
           <p>Email: {user.email}</p>
+
+          {/* Token Demo Component */}
+          {/* <TokenDemo /> */}
         </div>
       </div>
     );
