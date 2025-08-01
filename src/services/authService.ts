@@ -61,6 +61,28 @@ const getUserAttributesFromToken = (session: CognitoUserSession): any => {
   }
 };
 
+// Get user attributes from stored token string
+const getUserAttributesFromStoredToken = (tokenString: string): any => {
+  try {
+    // Decode JWT token (without verification for client-side use)
+    const base64Url = tokenString.split(".")[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map(function (c) {
+          return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+        })
+        .join("")
+    );
+
+    return JSON.parse(jsonPayload);
+  } catch (error) {
+    console.warn("Failed to decode stored token payload:", error);
+    return {};
+  }
+};
+
 // Convert Cognito user to our User format
 const cognitoUserToUser = (
   cognitoUser: CognitoUser,
@@ -173,7 +195,36 @@ export const getCurrentUser = (): User | null => {
   const currentUser = userPool.getCurrentUser();
   if (!currentUser) return null;
 
-  return cognitoUserToUser(currentUser);
+  // Get tokens to extract user attributes
+  const tokens = getTokens();
+  if (!tokens) return null;
+
+  // Create a mock session from stored tokens to extract attributes
+  try {
+    const idToken = tokens.idToken;
+    const tokenAttributes = getUserAttributesFromStoredToken(idToken);
+
+    return {
+      username: currentUser.getUsername(),
+      email: tokenAttributes.email || currentUser.getUsername(),
+      attributes: {
+        email: tokenAttributes.email || currentUser.getUsername(),
+        sub: tokenAttributes.sub || currentUser.getUsername(),
+        ...tokenAttributes,
+      },
+    };
+  } catch (error) {
+    console.warn("Failed to get user attributes from stored token:", error);
+    // Fallback to basic user info
+    return {
+      username: currentUser.getUsername(),
+      email: currentUser.getUsername(),
+      attributes: {
+        email: currentUser.getUsername(),
+        sub: currentUser.getUsername(),
+      },
+    };
+  }
 };
 
 // Check if user is authenticated
